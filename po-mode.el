@@ -2487,9 +2487,45 @@ Otherwise, move nothing, and just return 'nil'."
         (set-buffer current))
       found)))
 
+(defun po-seek-equivalent-key (name string)
+  "Search a PO file NAME for a 'msgid' STRING having a non-empty 'msgstr'.
+STRING is the full quoted msgid field, including the 'msgid' keyword.  When
+found, display the file over the current window, with the 'msgstr' field
+possibly highlighted, the cursor at start of msgid, then return 't'.
+Otherwise, move nothing, and just return 'nil'."
+  (let ((current (current-buffer))
+        (buffer (find-file-noselect name)))
+    (set-buffer buffer)
+    (let ((start (point))
+          found)
+      (goto-char (point-min))
+      (while (and (not found) (search-forward string nil t))
+        ;; Screen out longer 'msgid's.
+        (if (looking-at "^msgstr ")
+              (setq found t)))
+      (if found
+          (progn
+            (switch-to-buffer buffer)
+            (po-find-span-of-entry)
+            (if po-highlighting
+                (progn
+                  (goto-char po-start-of-entry)
+                  (re-search-forward po-any-msgstr-block-regexp nil t)
+                  (let ((end (1- (match-end 0))))
+                    (goto-char (match-beginning 0))
+                    (re-search-forward "msgstr +" nil t)
+                    ;; Just "borrow" the marking overlay.
+                    (po-highlight po-marking-overlay (point) end))))
+            (goto-char po-start-of-msgid))
+        (goto-char start)
+        (po-find-span-of-entry)
+        (set-buffer current))
+      found)))
+
 (defun po-cycle-auxiliary ()
   "Select the next auxiliary file having an entry with same 'msgid'."
   (interactive)
+  (po-consider-as-auxiliary)
   (po-find-span-of-entry)
   (if po-auxiliary-list
       (let ((string (buffer-substring po-start-of-msgid
@@ -2499,7 +2535,7 @@ Otherwise, move nothing, and just return 'nil'."
         (while (and (not found) cursor)
           (setq name (car (car cursor)))
           (if (and (not (string-equal buffer-file-name name))
-                   (po-seek-equivalent-translation name string))
+                   (po-seek-equivalent-key name string))
               (setq found t
                     po-auxiliary-cursor cursor))
           (setq cursor (cdr cursor)))
@@ -2507,7 +2543,7 @@ Otherwise, move nothing, and just return 'nil'."
         (while (and (not found) cursor)
           (setq name (car (car cursor)))
           (if (and (not (string-equal buffer-file-name name))
-                   (po-seek-equivalent-translation name string))
+                   (po-seek-equivalent-key name string))
               (setq found t
                     po-auxiliary-cursor cursor))
           (setq cursor (cdr cursor)))
